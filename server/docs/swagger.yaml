@@ -1,0 +1,618 @@
+openapi: 3.0.3
+info:
+  title: Corelab LMS API
+  version: 1.0.0
+  description: |
+    API REST pour le LMS Corelab.
+    Backend Express + MongoDB (Mongoose).
+    Auth via JWT Bearer token.
+    Port 4242.
+servers:
+  - url: http://localhost:4242/api
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        _id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [admin, student] }
+        firstLogin: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Course:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        cohorts: { type: array, items: { $ref: '#/components/schemas/User' } }
+        lessons: { type: array, items: { type: string } }
+        quizzes: { type: array, items: { type: string } }
+        createdBy: { $ref: '#/components/schemas/User' }
+        createdAt: { type: string, format: date-time }
+
+    Lesson:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        htmlContent: { type: string }
+        courseId: { type: string }
+        order: { type: integer }
+        availableDate: { type: string, format: date-time }
+        mediaUrls: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+
+    Quiz:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        courseId: { type: string }
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              text: { type: string }
+              options: { type: array, items: { type: string } }
+              correctAnswers: { type: array, items: { type: string } }
+              points: { type: integer }
+        passingScore: { type: integer }
+        timeLimit: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    QuizAttempt:
+      type: object
+      properties:
+        _id: { type: string }
+        studentId: { $ref: '#/components/schemas/User' }
+        quizId: { $ref: '#/components/schemas/Quiz' }
+        answers: { type: array, items: { type: array, items: { type: string } } }
+        score: { type: integer }
+        passed: { type: boolean }
+        submittedAt: { type: string, format: date-time }
+
+    Progress:
+      type: object
+      properties:
+        _id: { type: string }
+        studentId: { $ref: '#/components/schemas/User' }
+        courseId: { $ref: '#/components/schemas/Course' }
+        completedLessons: { type: array, items: { $ref: '#/components/schemas/Lesson' } }
+        quizResults: { type: array, items: { $ref: '#/components/schemas/QuizAttempt' } }
+        overallProgress: { type: integer }
+
+    Notification:
+      type: object
+      properties:
+        _id: { type: string }
+        userId: { $ref: '#/components/schemas/User' }
+        type: { type: string, enum: [new_lesson, quiz_result, system_update] }
+        message: { type: string }
+        read: { type: boolean }
+        relatedId: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+
+paths:
+  # ---- AUTH ----
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+        400: { $ref: '#/components/schemas/Error' }
+        401: { $ref: '#/components/schemas/Error' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Créer un utilisateur (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, role]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                role: { type: string, enum: [admin, student] }
+      responses:
+        201: { $ref: '#/components/schemas/User' }
+        400: { $ref: '#/components/schemas/Error' }
+
+  /auth/first-login:
+    post:
+      tags: [Auth]
+      summary: Première connexion — définir le mot de passe
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 8 }
+      responses:
+        200: { $ref: '#/components/schemas/User' }
+        400: { $ref: '#/components/schemas/Error' }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Profil connecté
+      responses:
+        200: { $ref: '#/components/schemas/User' }
+
+  # ---- USERS ----
+  /users:
+    get:
+      tags: [Users]
+      summary: Liste des utilisateurs (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, default: 'createdAt:desc' } }
+      responses:
+        200:
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/User' } }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pages: { type: integer }
+
+  /users/import:
+    post:
+      tags: [Users]
+      summary: Import en masse (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        201:
+          description: Import réussi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported: { type: integer }
+        400: { $ref: '#/components/schemas/Error' }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Détail utilisateur (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/User' }
+        404: { $ref: '#/components/schemas/Error' }
+
+  # ---- COURSES ----
+  /courses:
+    get:
+      tags: [Courses]
+      summary: Liste des cours
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 12 } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, default: 'createdAt:desc' } }
+      responses:
+        200: { description: Paginated course list }
+    post:
+      tags: [Courses]
+      summary: Créer un cours (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                category: { type: string }
+      responses:
+        201: { $ref: '#/components/schemas/Course' }
+        400: { $ref: '#/components/schemas/Error' }
+
+  /courses/{id}:
+    get:
+      tags: [Courses]
+      summary: Détail d'un cours
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Course' }
+    put:
+      tags: [Courses]
+      summary: Modifier un cours (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Course' }
+    delete:
+      tags: [Courses]
+      summary: Supprimer un cours (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        204: { description: Supprimé }
+
+  /courses/{id}/cohorts:
+    get:
+      tags: [Courses]
+      summary: Étudiants inscrits (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+    post:
+      tags: [Courses]
+      summary: Assigner des étudiants (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userIds]
+              properties:
+                userIds: { type: array, items: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Course' }
+
+  /courses/{courseId}/lessons:
+    get:
+      tags: [Lessons]
+      summary: Leçons d'un cours
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { type: string } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Lesson' }
+    post:
+      tags: [Lessons]
+      summary: Créer une leçon (admin only, import HTML)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, htmlContent]
+              properties:
+                title: { type: string }
+                htmlContent: { type: string }
+                order: { type: integer }
+                mediaUrls: { type: array, items: { type: string } }
+      responses:
+        201: { $ref: '#/components/schemas/Lesson' }
+
+  /lessons/{id}:
+    get:
+      tags: [Lessons]
+      summary: Détail leçon
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Lesson' }
+    put:
+      tags: [Lessons]
+      summary: Modifier leçon (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Lesson' }
+    delete:
+      tags: [Lessons]
+      summary: Supprimer leçon (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        204: { description: Supprimée }
+
+  /lessons/{id}/schedule:
+    put:
+      tags: [Lessons]
+      summary: Planifier la disponibilité (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [availableDate]
+              properties:
+                availableDate: { type: string, format: date-time }
+      responses:
+        200: { $ref: '#/components/schemas/Lesson' }
+
+  # ---- QUIZZES ----
+  /courses/{courseId}/quizzes:
+    get:
+      tags: [Quizzes]
+      summary: Quiz d'un cours
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { type: string } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Quiz' }
+
+  /courses/{courseId}/quizzes/import:
+    post:
+      tags: [Quizzes]
+      summary: Importer un QCM depuis JSON (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, questions]
+              properties:
+                title: { type: string }
+                questions:
+                  type: array
+                  items:
+                    type: object
+                    required: [text, options, correctAnswers]
+                    properties:
+                      text: { type: string }
+                      options: { type: array, items: { type: string } }
+                      correctAnswers: { type: array, items: { type: string } }
+                      points: { type: integer, default: 1 }
+      responses:
+        201: { $ref: '#/components/schemas/Quiz' }
+
+  /quizzes/{id}:
+    get:
+      tags: [Quizzes]
+      summary: Détail quiz
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Quiz' }
+    put:
+      tags: [Quizzes]
+      summary: Modifier quiz (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Quiz' }
+    delete:
+      tags: [Quizzes]
+      summary: Supprimer quiz (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        204: { description: Supprimé }
+
+  /quizzes/{id}/threshold:
+    put:
+      tags: [Quizzes]
+      summary: Définir le seuil de réussite (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [passingScore]
+              properties:
+                passingScore: { type: integer, minimum: 0, maximum: 100 }
+      responses:
+        200: { $ref: '#/components/schemas/Quiz' }
+
+  /quizzes/{id}/submit:
+    post:
+      tags: [Quizzes]
+      summary: Soumettre les réponses (student)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers:
+                  type: array
+                  items:
+                    type: array
+                    items: { type: string }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score: { type: integer }
+                  passed: { type: boolean }
+                  maxScore: { type: integer }
+                  attempt: { $ref: '#/components/schemas/QuizAttempt' }
+
+  # ---- PROGRESS ----
+  /progress/me:
+    get:
+      tags: [Progress]
+      summary: Ma progression (student)
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Progress' }
+
+  /progress/students:
+    get:
+      tags: [Progress]
+      summary: Progression de tous les étudiants (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: courseId, in: query, schema: { type: string } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Progress' }
+
+  /progress/students/{studentId}:
+    get:
+      tags: [Progress]
+      summary: Progression d'un étudiant (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: studentId, in: path, required: true, schema: { type: string } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Progress' }
+
+  # ---- NOTIFICATIONS ----
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Mes notifications
+      parameters:
+        - { name: read, in: query, schema: { type: boolean } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+
+  /notifications/{id}/read:
+    put:
+      tags: [Notifications]
+      summary: Marquer comme lue
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Notification' }
+
+  # ---- HEALTH ----
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      security: []
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  timestamp: { type: string, format: date-time }
