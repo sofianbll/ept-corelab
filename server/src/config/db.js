@@ -5,8 +5,16 @@ const connectDB = async () => {
   if (!uri) {
     throw new Error('MONGODB_URI is not defined in .env');
   }
-  await mongoose.connect(uri);
-  console.log('[DB] MongoDB connected');
+  try {
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    console.log('[DB] MongoDB connected');
+  } catch (e) {
+    console.error('[DB] MongoDB connection failed', e);
+    process.exit(1);
+  }
+
 };
 
 module.exports = { connectDB };
