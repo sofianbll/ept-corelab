@@ -3,7 +3,20 @@ const Notification = require('../models/Notification');
 const Course = require('../models/Course');
 
 exports.getLessons = async (req, res) => {
-  const lessons = await Lesson.find({ courseId: req.params.courseId }).sort({ order: 1 });
+  const query = { courseId: req.params.courseId };
+
+  if (req.user.role !== 'admin') {
+    const course = await Course.findById(req.params.courseId);
+    if (!course || !course.cohorts.some(c => c.equals(req.user._id))) {
+      return res.json([]);
+    }
+    query.$or = [
+      { availableDate: null },
+      { availableDate: { $lte: new Date() } },
+    ];
+  }
+
+  const lessons = await Lesson.find(query).sort({ order: 1 });
   res.json(lessons);
 };
 
@@ -15,6 +28,17 @@ exports.createLesson = async (req, res) => {
 exports.getLessonById = async (req, res) => {
   const lesson = await Lesson.findById(req.params.id);
   if (!lesson) return res.status(404).json({ error: 'Not Found', message: 'Lesson not found' });
+
+  if (req.user.role !== 'admin') {
+    const course = await Course.findById(lesson.courseId);
+    if (!course || !course.cohorts.some(c => c.equals(req.user._id))) {
+      return res.status(404).json({ error: 'Not Found', message: 'Lesson not found' });
+    }
+    if (lesson.availableDate && lesson.availableDate > new Date()) {
+      return res.status(404).json({ error: 'Not Found', message: 'Lesson not found' });
+    }
+  }
+
   res.json(lesson);
 };
 

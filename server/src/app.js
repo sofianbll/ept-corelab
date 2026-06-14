@@ -8,11 +8,12 @@ const YAML = require('yamljs');
 
 const errorHandler = require('./middleware/errorHandler');
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000'
 const app = express();
 
 // === Global Middleware ===
 app.use(express.json({ limit: '10mb' }));
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(helmet());
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));

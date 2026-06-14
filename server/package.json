@@ -5,12 +5,18 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node src/server.js",
+    "start": "node server.js",
     "seed": "node src/seed.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "keywords": ["lms", "epitech", "mern", "express", "mongodb"],
+  "keywords": [
+    "lms",
+    "epitech",
+    "mern",
+    "express",
+    "mongodb"
+  ],
   "author": "Sofian (Backend)",
   "license": "MIT",
   "dependencies": {

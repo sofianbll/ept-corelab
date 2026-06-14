@@ -36,3 +36,23 @@ exports.getStudentProgress = async (req, res) => {
     .populate('courseId', 'title');
   res.json(progress);
 };
+
+exports.completeLesson = async (req, res) => {
+  const lesson = await Lesson.findById(req.params.lessonId);
+  if (!lesson) return res.status(404).json({ error: 'Not Found', message: 'Lesson not found' });
+
+  let progress = await Progress.findOne({ studentId: req.user._id, courseId: lesson.courseId });
+  if (!progress) {
+    progress = new Progress({ studentId: req.user._id, courseId: lesson.courseId });
+  }
+
+  if (!progress.completedLessons.includes(lesson._id)) {
+    progress.completedLessons.push(lesson._id);
+  }
+
+  progress.overallProgress = await calculateProgress(progress);
+  await progress.save();
+  await progress.populate('completedLessons', 'title order');
+
+  res.json(progress);
+};

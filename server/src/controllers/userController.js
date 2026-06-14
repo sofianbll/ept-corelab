@@ -25,8 +25,45 @@ exports.getUsers = async (req, res) => {
 
 // POST /api/users/import
 exports.importUsers = async (req, res) => {
-  // TODO: handle multipart file upload (CSV / JSON)
-  res.status(201).json({ imported: 0 });
+  let users;
+
+  if (req.body.users) {
+    users = req.body.users;
+  } else if (req.body.raw) {
+    const raw = req.body.raw.trim();
+    if (raw.startsWith('[') || raw.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(raw);
+        users = Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return res.status(400).json({ error: 'Invalid JSON', message: 'Could not parse raw JSON' });
+      }
+    } else {
+      const lines = raw.split('\n').filter(Boolean);
+      const [header, ...dataLines] = lines;
+      const cols = header.split(',').map((c) => c.trim().toLowerCase());
+      users = dataLines.map((line) => {
+        const vals = line.split(',').map((v) => v.trim());
+        const row = {};
+        cols.forEach((col, i) => { row[col] = vals[i]; });
+        return row;
+      });
+    }
+  }
+
+  const results = [];
+  for (const u of users) {
+    const tempPassword = Math.random().toString(36).slice(-10);
+    const user = await User.create({
+      email: u.email,
+      name: u.name,
+      role: u.role || 'student',
+      password: tempPassword,
+    });
+    results.push({ _id: user._id, email: user.email, name: user.name, role: user.role });
+  }
+
+  res.status(201).json({ imported: results.length, users: results });
 };
 
 // GET /api/users/:id

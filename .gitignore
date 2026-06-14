@@ -24,6 +24,9 @@ Thumbs.db
 # Test coverage
 coverage/
 
+# Local isolated worktrees
+.worktrees/
+
 #Node
 yarn-debug.log*
 yarn-error.log*

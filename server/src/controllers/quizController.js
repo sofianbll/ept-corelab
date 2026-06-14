@@ -1,7 +1,17 @@
 const Quiz = require('../models/Quiz');
 const QuizAttempt = require('../models/QuizAttempt');
+const Course = require('../models/Course');
+const Progress = require('../models/Progress');
+const Lesson = require('../models/Lesson');
 
 exports.getQuizzes = async (req, res) => {
+  if (req.user.role !== 'admin') {
+    const course = await Course.findById(req.params.courseId);
+    if (!course || !course.cohorts.some(c => c.equals(req.user._id))) {
+      return res.json([]);
+    }
+  }
+
   const quizzes = await Quiz.find({ courseId: req.params.courseId });
   res.json(quizzes);
 };
@@ -14,6 +24,14 @@ exports.importQuiz = async (req, res) => {
 exports.getQuizById = async (req, res) => {
   const quiz = await Quiz.findById(req.params.id);
   if (!quiz) return res.status(404).json({ error: 'Not Found', message: 'Quiz not found' });
+
+  if (req.user.role !== 'admin') {
+    const course = await Course.findById(quiz.courseId);
+    if (!course || !course.cohorts.some(c => c.equals(req.user._id))) {
+      return res.status(404).json({ error: 'Not Found', message: 'Quiz not found' });
+    }
+  }
+
   res.json(quiz);
 };
 
@@ -63,10 +81,36 @@ exports.submitQuiz = async (req, res) => {
     passed,
   });
 
+  let progress = await Progress.findOne({ studentId: req.user._id, courseId: quiz.courseId });
+  if (!progress) {
+    progress = new Progress({ studentId: req.user._id, courseId: quiz.courseId });
+  }
+  progress.quizResults.push(attempt._id);
+  const totalLessons = await Lesson.countDocuments({ courseId: quiz.courseId });
+  progress.overallProgress = totalLessons > 0
+    ? Math.round((progress.completedLessons.length / totalLessons) * 100)
+    : 0;
+  await progress.save();
+
   res.json({
     score,
     passed,
     maxScore,
     attempt: await attempt.populate('studentId', 'name email'),
   });
+};
+
+exports.getAllAttempts = async (req, res) => {
+  const filter = {};
+  if (req.query.quizId) filter.quizId = req.query.quizId;
+
+  const attempts = await QuizAttempt.find(filter)
+    .populate('studentId', 'name email')
+    .populate({
+      path: 'quizId',
+      select: 'title courseId',
+      populate: { path: 'courseId', select: 'title' },
+    });
+
+  res.json(attempts);
 };

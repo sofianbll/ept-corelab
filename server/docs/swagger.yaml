@@ -184,6 +184,7 @@ paths:
     get:
       tags: [Auth]
       summary: Profil connecté
+      security: [{ bearerAuth: [] }]
       responses:
         200: { $ref: '#/components/schemas/User' }
 
@@ -219,12 +220,20 @@ paths:
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
               type: object
-              required: [file]
               properties:
-                file: { type: string, format: binary }
+                users:
+                  type: array
+                  items:
+                    type: object
+                    required: [email, name]
+                    properties:
+                      email: { type: string, format: email }
+                      name: { type: string }
+                      role: { type: string, enum: [admin, student], default: student }
+                raw: { type: string, description: 'Texte brut avec un utilisateur par ligne (format: email nom role)' }
       responses:
         201:
           description: Import réussi
@@ -252,6 +261,7 @@ paths:
     get:
       tags: [Courses]
       summary: Liste des cours
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, default: 12 } }
@@ -282,6 +292,7 @@ paths:
     get:
       tags: [Courses]
       summary: Détail d'un cours
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
@@ -335,10 +346,11 @@ paths:
       responses:
         200: { $ref: '#/components/schemas/Course' }
 
-  /courses/{courseId}/lessons:
+  /lessons/courses/{courseId}/lessons:
     get:
       tags: [Lessons]
       summary: Leçons d'un cours
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: courseId, in: path, required: true, schema: { type: string } }
       responses:
@@ -373,6 +385,7 @@ paths:
     get:
       tags: [Lessons]
       summary: Détail leçon
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
@@ -414,10 +427,11 @@ paths:
         200: { $ref: '#/components/schemas/Lesson' }
 
   # ---- QUIZZES ----
-  /courses/{courseId}/quizzes:
+  /quizzes/courses/{courseId}/quizzes:
     get:
       tags: [Quizzes]
       summary: Quiz d'un cours
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: courseId, in: path, required: true, schema: { type: string } }
       responses:
@@ -428,7 +442,7 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Quiz' }
 
-  /courses/{courseId}/quizzes/import:
+  /quizzes/courses/{courseId}/quizzes/import:
     post:
       tags: [Quizzes]
       summary: Importer un QCM depuis JSON (admin only)
@@ -461,6 +475,7 @@ paths:
     get:
       tags: [Quizzes]
       summary: Détail quiz
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
@@ -533,11 +548,27 @@ paths:
                   maxScore: { type: integer }
                   attempt: { $ref: '#/components/schemas/QuizAttempt' }
 
+  /quizzes/admin/attempts:
+    get:
+      tags: [Quizzes]
+      summary: Toutes les tentatives (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: quizId, in: query, schema: { type: string }, description: 'Filtrer par quiz' }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/QuizAttempt' }
+
   # ---- PROGRESS ----
   /progress/me:
     get:
       tags: [Progress]
       summary: Ma progression (student)
+      security: [{ bearerAuth: [] }]
       responses:
         200:
           content:
@@ -545,6 +576,17 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Progress' }
+
+  /progress/me/lessons/{lessonId}:
+    put:
+      tags: [Progress]
+      summary: Marquer une leçon comme complétée (student)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: lessonId, in: path, required: true, schema: { type: string } }
+      responses:
+        200: { $ref: '#/components/schemas/Progress' }
+        404: { $ref: '#/components/schemas/Error' }
 
   /progress/students:
     get:
@@ -581,6 +623,7 @@ paths:
     get:
       tags: [Notifications]
       summary: Mes notifications
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: read, in: query, schema: { type: boolean } }
       responses:
@@ -595,6 +638,7 @@ paths:
     put:
       tags: [Notifications]
       summary: Marquer comme lue
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:

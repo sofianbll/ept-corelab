@@ -4,6 +4,7 @@ exports.getCourses = async (req, res) => {
   const { page = 1, limit = 12, search, sort = 'createdAt:desc' } = req.query;
   const query = {};
   if (search) query.title = { $regex: search, $options: 'i' };
+  if (req.user.role !== 'admin') query.cohorts = req.user._id;
 
   const [sortField, sortDir] = sort.split(':');
   const skip = (page - 1) * limit;
@@ -24,6 +25,9 @@ exports.createCourse = async (req, res) => {
 exports.getCourseById = async (req, res) => {
   const course = await Course.findById(req.params.id).populate('createdBy', 'name email');
   if (!course) return res.status(404).json({ error: 'Not Found', message: 'Course not found' });
+  if (req.user.role !== 'admin' && !course.cohorts.some(c => c.equals(req.user._id))) {
+    return res.status(404).json({ error: 'Not Found', message: 'Course not found' });
+  }
   res.json(course);
 };
 

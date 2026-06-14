@@ -8,9 +8,9 @@ const {
   getCohorts, addCohorts,
 } = require('../controllers/courseController');
 
-router.get('/', getCourses);
+router.get('/', auth, getCourses);
 router.post('/', auth, role('admin'), validate({ body: createCourseSchema }), createCourse);
-router.get('/:id', getCourseById);
+router.get('/:id', auth, getCourseById);
 router.put('/:id', auth, role('admin'), validate({ body: updateCourseSchema }), updateCourse);
 router.delete('/:id', auth, role('admin'), deleteCourse);
 router.get('/:id/cohorts', auth, role('admin'), getCohorts);
